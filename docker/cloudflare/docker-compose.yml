@@ -1,0 +1,12 @@
+services:
+  cloudflared-pg-replication-dev:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared-pg-replication-dev
+    restart: unless-stopped
+    networks:
+      - supabase-dev_default
+    command: access tcp --hostname ${CF_PG_HOSTNAME} --url 0.0.0.0:45432
+
+networks:
+  supabase-dev_default:
+    external: true
