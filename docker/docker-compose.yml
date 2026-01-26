@@ -449,19 +449,18 @@ services:
   # Comment out everything below this point if you are using an external Postgres database
   db:
     container_name: ${COMPOSE_PROJECT_NAME:-supabase}-db
-    # Standard Supabase PostgreSQL image (default)
-    image: supabase/postgres:15.8.1.085
-    # Uncomment for Spock bi-directional replication support (requires supabase-postgres-spock:15 image)
-    # See SPOCK-SETUP.md for complete setup guide
-    # image: supabase-postgres-spock:15
-    # extra_hosts:
-    #   - "host.docker.internal:host-gateway"
-    # ports:
-    #   - "${DB_PORT_PREFIX:-1}${POSTGRES_PORT}:${POSTGRES_PORT}"
+    # Spock-enabled PostgreSQL image (supports bi-directional replication when configured)
+    # Works as standard PostgreSQL when replication is not configured
+    # See SPOCK-SETUP.md for replication setup guide
+    image: supabase-postgres-spock:15
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - ${DB_PORT}:${POSTGRES_PORT}
     restart: unless-stopped
     volumes:
-      # Uncomment for Spock: Custom postgresql.conf with spock enabled
-      # - ./volumes/db/postgresql-spock.conf:/etc/postgresql/postgresql.conf:Z
+      # Custom postgresql.conf with spock enabled
+      - ./volumes/db/postgresql-spock.conf:/etc/postgresql/postgresql.conf:Z
       - ./volumes/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:Z
       # Must be superuser to create event trigger
       - ./volumes/db/webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:Z
@@ -477,8 +476,8 @@ services:
       - ./volumes/db/logs.sql:/docker-entrypoint-initdb.d/migrations/99-logs.sql:Z
       # Changes required for Pooler support
       - ./volumes/db/pooler.sql:/docker-entrypoint-initdb.d/migrations/99-pooler.sql:Z
-      # Uncomment for Spock: Replication initialization script (conditional on REPLICA_HOST_IP)
-      # - ./volumes/db/99-replication-init.sh:/docker-entrypoint-initdb.d/init-scripts/99-replication-init.sh:Z
+      # Replication initialization script (only runs if REPLICA_HOST_IP is set)
+      - ./volumes/db/99-replication-init.sh:/docker-entrypoint-initdb.d/init-scripts/99-replication-init.sh:Z
       # Use named volume to persist pgsodium decryption key between restarts
       - db-config:/etc/postgresql-custom
     healthcheck:
@@ -507,41 +506,31 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXP: ${JWT_EXPIRY}
-      # Uncomment for Spock: Replication configuration (for init script)
-      # REPLICATION_PASSWORD: ${REPLICATION_PASSWORD:-}
-      # REPLICA_HOST_IP: ${REPLICA_HOST_IP:-}
-    # Standard command (for non-Spock deployments)
+      # Replication configuration (leave empty to disable replication)
+      REPLICATION_PASSWORD: ${REPLICATION_PASSWORD}
+      REPLICA_HOST_IP: ${REPLICA_HOST_IP}
+    # Command with Spock-enabled shared_preload_libraries
+    # Replication is configured via 99-replication-init.sh when REPLICA_HOST_IP is set
     command:
-      [
-        "postgres",
-        "-c",
-        "config_file=/etc/postgresql/postgresql.conf",
-        "-c",
-        "log_min_messages=fatal" # prevents Realtime polling queries from appearing in logs
-      ]
-    # Uncomment for Spock: Replace the command above with this block for bi-directional replication
-    # command:
-    #   - /bin/bash
-    #   - -c
-    #   - |
-    #     # Add replication entry to pg_hba.conf if not present
-    #     if [ -n "$$REPLICA_HOST_IP" ]; then
-    #       PG_HBA="/etc/postgresql/pg_hba.conf"
-    #       if ! grep -q "host.*replication.*replicator.*0.0.0.0/0" "$$PG_HBA" 2>/dev/null; then
-    #         echo "host    replication     replicator      0.0.0.0/0        scram-sha-256" >> "$$PG_HBA"
-    #         echo "Added replication entry to pg_hba.conf"
-    #       fi
-    #     fi
-    #     exec gosu postgres postgres \
-    #       -c config_file=/etc/postgresql/postgresql.conf \
-    #       -c log_min_messages=log \
-    #       -c wal_level=${WAL_LEVEL:-logical} \
-    #       -c max_wal_senders=${MAX_WAL_SENDERS:-10} \
-    #       -c max_replication_slots=${MAX_REPLICATION_SLOTS:-10} \
-    #       -c wal_keep_size=${WAL_KEEP_SIZE:-1GB} \
-    #       -c hot_standby=${HOT_STANDBY:-on} \
-    #       -c track_commit_timestamp=on \
-    #       -c shared_preload_libraries='pg_stat_statements,pgaudit,plpgsql,plpgsql_check,pg_cron,pg_net,pgsodium,timescaledb,auto_explain,pg_tle,supabase_vault,spock'
+      - postgres
+      - -c
+      - config_file=/etc/postgresql/postgresql.conf
+      - -c
+      - log_min_messages=${LOG_MIN_MESSAGES:-fatal}
+      - -c
+      - wal_level=${WAL_LEVEL:-logical}
+      - -c
+      - max_wal_senders=${MAX_WAL_SENDERS:-10}
+      - -c
+      - max_replication_slots=${MAX_REPLICATION_SLOTS:-10}
+      - -c
+      - wal_keep_size=${WAL_KEEP_SIZE:-1GB}
+      - -c
+      - hot_standby=${HOT_STANDBY:-on}
+      - -c
+      - track_commit_timestamp=on
+      - -c
+      - shared_preload_libraries=pg_stat_statements,pgaudit,plpgsql,plpgsql_check,pg_cron,pg_net,pgsodium,timescaledb,auto_explain,pg_tle,supabase_vault,spock
 
   vector:
     container_name: ${COMPOSE_PROJECT_NAME:-supabase}-vector
