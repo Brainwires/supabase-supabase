@@ -27,8 +27,8 @@ acls:
 ###
 basicauth_credentials:
   - consumer: DASHBOARD
-    username: '$DASHBOARD_USERNAME'
-    password: '$DASHBOARD_PASSWORD'
+    username: $DASHBOARD_USERNAME
+    password: $DASHBOARD_PASSWORD
 
 ###
 ### API Routes
@@ -44,6 +44,27 @@ services:
           - /auth/v1/verify
     plugins:
       - name: cors
+        config:
+          origins:
+            - "$SITE_URL_PATTERN"
+            - "http://localhost:3000"
+            - "http://127.0.0.1:3000"
+          methods:
+            - GET
+            - POST
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Client-Info
+            - apikey
+            - x-supabase-api-version
+            - content-profile
+            - accept-profile
+          credentials: true
+          max_age: 3600
+
   - name: auth-v1-open-callback
     url: http://auth:9999/callback
     routes:
@@ -53,6 +74,27 @@ services:
           - /auth/v1/callback
     plugins:
       - name: cors
+        config:
+          origins:
+            - "$SITE_URL_PATTERN"
+            - "http://localhost:3000"
+            - "http://127.0.0.1:3000"
+          methods:
+            - GET
+            - POST
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Client-Info
+            - apikey
+            - x-supabase-api-version
+            - content-profile
+            - accept-profile
+          credentials: true
+          max_age: 3600
+
   - name: auth-v1-open-authorize
     url: http://auth:9999/authorize
     routes:
@@ -62,6 +104,26 @@ services:
           - /auth/v1/authorize
     plugins:
       - name: cors
+        config:
+          origins:
+            - "$SITE_URL_PATTERN"
+            - "http://localhost:3000"
+            - "http://127.0.0.1:3000"
+          methods:
+            - GET
+            - POST
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Client-Info
+            - apikey
+            - x-supabase-api-version
+            - content-profile
+            - accept-profile
+          credentials: true
+          max_age: 3600
 
   ## Secure Auth routes
   - name: auth-v1
@@ -74,6 +136,28 @@ services:
           - /auth/v1/
     plugins:
       - name: cors
+        config:
+          origins:
+            - "$SITE_URL_PATTERN"
+            - "http://localhost:3000"
+            - "http://127.0.0.1:3000"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Client-Info
+            - apikey
+            - x-supabase-api-version
+            - content-profile
+            - accept-profile
+          credentials: true
+          max_age: 3600
       - name: key-auth
         config:
           hide_credentials: false
@@ -95,6 +179,30 @@ services:
           - /rest/v1/
     plugins:
       - name: cors
+        config:
+          origins:
+            - "$SITE_URL_PATTERN"
+            - "http://localhost:3000"
+            - "http://127.0.0.1:3000"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - PATCH
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Client-Info
+            - apikey
+            - Prefer
+            - x-supabase-api-version
+            - content-profile
+            - accept-profile
+          credentials: true
+          max_age: 3600
       - name: key-auth
         config:
           hide_credentials: true
@@ -116,6 +224,26 @@ services:
           - /graphql/v1
     plugins:
       - name: cors
+        config:
+          origins:
+            - "$SITE_URL_PATTERN"
+            - "http://localhost:3000"
+            - "http://127.0.0.1:3000"
+          methods:
+            - GET
+            - POST
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Client-Info
+            - apikey
+            - x-supabase-api-version
+            - content-profile
+            - accept-profile
+          credentials: true
+          max_age: 3600
       - name: key-auth
         config:
           hide_credentials: true
@@ -134,7 +262,7 @@ services:
   ## Secure Realtime routes
   - name: realtime-v1-ws
     _comment: 'Realtime: /realtime/v1/* -> ws://realtime:4000/socket/*'
-    url: http://realtime-dev.supabase-realtime:4000/socket
+    url: http://${REALTIME_CONTAINER_NAME:-realtime-dev.supabase-realtime}:4000/socket
     protocol: ws
     routes:
       - name: realtime-v1-ws
@@ -143,6 +271,26 @@ services:
           - /realtime/v1/
     plugins:
       - name: cors
+        config:
+          origins:
+            - "$SITE_URL_PATTERN"
+            - "http://localhost:3000"
+            - "http://127.0.0.1:3000"
+          methods:
+            - GET
+            - POST
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Client-Info
+            - apikey
+            - x-supabase-api-version
+            - content-profile
+            - accept-profile
+          credentials: true
+          max_age: 3600
       - name: key-auth
         config:
           hide_credentials: false
@@ -152,9 +300,10 @@ services:
           allow:
             - admin
             - anon
+
   - name: realtime-v1-rest
     _comment: 'Realtime: /realtime/v1/* -> ws://realtime:4000/socket/*'
-    url: http://realtime-dev.supabase-realtime:4000/api
+    url: http://${REALTIME_CONTAINER_NAME:-realtime-dev.supabase-realtime}:4000/api
     protocol: http
     routes:
       - name: realtime-v1-rest
@@ -163,6 +312,28 @@ services:
           - /realtime/v1/api
     plugins:
       - name: cors
+        config:
+          origins:
+            - "$SITE_URL_PATTERN"
+            - "http://localhost:3000"
+            - "http://127.0.0.1:3000"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Client-Info
+            - apikey
+            - x-supabase-api-version
+            - content-profile
+            - accept-profile
+          credentials: true
+          max_age: 3600
       - name: key-auth
         config:
           hide_credentials: false
@@ -172,6 +343,7 @@ services:
           allow:
             - admin
             - anon
+
   ## Storage routes: the storage server manages its own auth
   - name: storage-v1
     _comment: 'Storage: /storage/v1/* -> http://storage:5000/*'
@@ -183,6 +355,39 @@ services:
           - /storage/v1/
     plugins:
       - name: cors
+        config:
+          origins:
+            - "$SITE_URL_PATTERN"
+            - "http://localhost:3000"
+            - "http://127.0.0.1:3000"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+            - HEAD
+          headers:
+            - Accept
+            - Accept-Language
+            - Authorization
+            - Content-Type
+            - Content-Length
+            - X-Client-Info
+            - apikey
+            - x-client-info
+            - cache-control
+            - x-supabase-api-version
+            - content-profile
+            - accept-profile
+            - x-upsert
+          exposed_headers:
+            - X-Total-Count
+            - Content-Range
+            - Content-Length
+          credentials: true
+          max_age: 3600
+          preflight_continue: false
 
   ## Edge Functions routes
   - name: functions-v1
@@ -195,6 +400,63 @@ services:
           - /functions/v1/
     plugins:
       - name: cors
+        config:
+          origins:
+            - "$SITE_URL_PATTERN"
+            - "http://localhost:3000"
+            - "http://127.0.0.1:3000"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Client-Info
+            - apikey
+            - x-supabase-api-version
+            - content-profile
+            - accept-profile
+          credentials: true
+          max_age: 3600
+
+  ## MCP Server routes - Model Context Protocol for AI integrations
+  ## OPTIONAL: Requires MCP service to be enabled in docker-compose.yml
+  ## Authentication is handled by the MCP server itself (JWT validation)
+  - name: mcp-v1
+    _comment: 'MCP Server: /mcp/v1/* -> http://mcp:3100/*'
+    url: http://mcp:3100/
+    routes:
+      - name: mcp-v1-all
+        strip_path: true
+        paths:
+          - /mcp/v1/
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "$SITE_URL_PATTERN"
+            - "http://localhost:3000"
+            - "http://127.0.0.1:3000"
+          methods:
+            - GET
+            - POST
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Client-Info
+            - apikey
+            - Mcp-Session-Id
+          exposed_headers:
+            - Mcp-Session-Id
+          credentials: true
+          max_age: 3600
 
   ## Analytics routes
   - name: analytics-v1
@@ -225,48 +487,6 @@ services:
           allow:
             - admin
 
-  ## Block access to /api/mcp
-  - name: mcp-blocker
-    _comment: 'Block direct access to /api/mcp'
-    url: http://studio:3000/api/mcp
-    routes:
-      - name: mcp-blocker-route
-        strip_path: true
-        paths:
-          - /api/mcp
-    plugins:
-      - name: request-termination
-        config:
-          status_code: 403
-          message: "Access is forbidden."
-
-  ## MCP endpoint - local access
-  - name: mcp
-    _comment: 'MCP: /mcp -> http://studio:3000/api/mcp (local access)'
-    url: http://studio:3000/api/mcp
-    routes:
-      - name: mcp
-        strip_path: true
-        paths:
-          - /mcp
-    plugins:
-      # Block access to /mcp by default
-      - name: request-termination
-        config:
-          status_code: 403
-          message: "Access is forbidden."
-      # Enable local access (danger zone!)
-      # 1. Comment out the 'request-termination' section above
-      # 2. Uncomment the entire section below, including 'deny'
-      # 3. Add your local IPs to the 'allow' list
-      #- name: cors
-      #- name: ip-restriction
-      #  config:
-      #    allow:
-      #      - 127.0.0.1
-      #      - ::1
-      #    deny: []
-
   ## Protected Dashboard - catch all remaining routes
   - name: dashboard
     _comment: 'Studio: /* -> http://studio:3000/*'
@@ -278,6 +498,28 @@ services:
           - /
     plugins:
       - name: cors
+        config:
+          origins:
+            - "$SITE_URL_PATTERN"
+            - "http://localhost:3000"
+            - "http://127.0.0.1:3000"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Client-Info
+            - apikey
+            - x-supabase-api-version
+            - content-profile
+            - accept-profile
+          credentials: true
+          max_age: 3600
       - name: basic-auth
         config:
           hide_credentials: true

@@ -22,21 +22,21 @@ This document describes the complete setup process for Spock bi-directional repl
 
 ```
 ┌─────────────────────────────────┐         ┌─────────────────────────────────┐
-│  PRIMARY (beta.brainwires.net)  │         │  STANDBY (brainwires.net)       │
+│  PRIMARY (server-a.example.com) │         │  STANDBY (server-b.example.com) │
 │                                 │         │                                 │
 │  ┌─────────────────────────┐   │         │   ┌─────────────────────────┐   │
-│  │ supabase-dev-db         │   │         │   │ supabase-dev-db         │   │
+│  │ supabase-db             │   │         │   │ supabase-db             │   │
 │  │ (PostgreSQL + Spock)    │   │         │   │ (PostgreSQL + Spock)    │   │
 │  │                         │   │         │   │                         │   │
-│  │ Node: primary_dev       │◄──┼─────────┼──►│ Node: standby_dev       │   │
+│  │ Node: primary           │◄──┼─────────┼──►│ Node: standby           │   │
 │  │ Sub: sub_from_standby   │   │         │   │ Sub: sub_from_primary   │   │
 │  └───────────┬─────────────┘   │         │   └───────────┬─────────────┘   │
 │              │                 │         │               │                 │
 │  ┌───────────▼─────────────┐   │         │   ┌───────────▼─────────────┐   │
 │  │ cloudflared-pg-         │   │         │   │ cloudflared-pg-         │   │
-│  │ replication-dev         │   │         │   │ replication-dev         │   │
+│  │ replication             │   │         │   │ replication             │   │
 │  │ (connects to STANDBY)   │   │         │   │ (connects to PRIMARY)   │   │
-│  │ port 45432              │   │         │   │ port 45432              │   │
+│  │ port 35432              │   │         │   │ port 35432              │   │
 │  └───────────┬─────────────┘   │         │   └───────────┬─────────────┘   │
 │              │                 │         │               │                 │
 └──────────────┼─────────────────┘         └───────────────┼─────────────────┘
@@ -99,8 +99,8 @@ command: >
 
 Each server needs a cloudflared container to connect to the OTHER server's PostgreSQL:
 
-- PRIMARY's cloudflared connects to: `pg-standby-dev.brainwires.net` (STANDBY's tunnel)
-- STANDBY's cloudflared connects to: `pg-prod-dev.brainwires.net` (PRIMARY's tunnel)
+- PRIMARY's cloudflared connects to: `pg-standby.example.com` (STANDBY's tunnel)
+- STANDBY's cloudflared connects to: `pg-primary.example.com` (PRIMARY's tunnel)
 
 ---
 
@@ -109,7 +109,7 @@ Each server needs a cloudflared container to connect to the OTHER server's Postg
 ### Directory Structure
 
 ```
-~/supabase-dev/cloudflare/
+./cloudflare/
 ├── docker-compose.yml
 └── .env
 ```
@@ -118,16 +118,16 @@ Each server needs a cloudflared container to connect to the OTHER server's Postg
 
 ```yaml
 services:
-  cloudflared-pg-replication-dev:
+  cloudflared-pg-replication:
     image: cloudflare/cloudflared:latest
-    container_name: cloudflared-pg-replication-dev
+    container_name: cloudflared-pg-replication
     restart: unless-stopped
     networks:
-      - supabase-dev_default
-    command: access tcp --hostname ${CF_PG_HOSTNAME} --url 0.0.0.0:45432
+      - supabase_default
+    command: access tcp --hostname ${CF_PG_HOSTNAME} --url 0.0.0.0:35432
 
 networks:
-  supabase-dev_default:
+  supabase_default:
     external: true
 ```
 
@@ -135,18 +135,18 @@ networks:
 
 **On PRIMARY (connects TO standby):**
 ```
-CF_PG_HOSTNAME=pg-standby-dev.brainwires.net
+CF_PG_HOSTNAME=pg-standby.example.com
 ```
 
 **On STANDBY (connects TO primary):**
 ```
-CF_PG_HOSTNAME=pg-prod-dev.brainwires.net
+CF_PG_HOSTNAME=pg-primary.example.com
 ```
 
 ### Start the tunnel
 
 ```bash
-cd ~/supabase-dev/cloudflare
+cd ./cloudflare
 docker compose up -d
 ```
 
@@ -154,7 +154,7 @@ docker compose up -d
 
 ```bash
 # From PRIMARY, test connection to STANDBY through tunnel
-docker exec supabase-dev-db psql -h cloudflared-pg-replication-dev -p 45432 -U postgres -c "SELECT 1;"
+docker exec supabase-db psql -h cloudflared-pg-replication -p 35432 -U postgres -c "SELECT 1;"
 ```
 
 ---
@@ -166,8 +166,8 @@ docker exec supabase-dev-db psql -h cloudflared-pg-replication-dev -p 45432 -U p
 On BOTH servers, add this line to allow replication connections:
 
 ```bash
-docker exec supabase-dev-db bash -c "echo 'host replication spock_replicator 0.0.0.0/0 scram-sha-256' >> /var/lib/postgresql/data/pg_hba.conf"
-docker exec supabase-dev-db bash -c "gosu postgres pg_ctl reload -D /var/lib/postgresql/data"
+docker exec supabase-db bash -c "echo 'host replication spock_replicator 0.0.0.0/0 scram-sha-256' >> /var/lib/postgresql/data/pg_hba.conf"
+docker exec supabase-db bash -c "gosu postgres pg_ctl reload -D /var/lib/postgresql/data"
 ```
 
 ### 2. Create Spock Replicator User
@@ -198,7 +198,7 @@ ALTER DATABASE postgres REFRESH COLLATION VERSION;
 All SQL commands should be run as `supabase_admin` (the superuser):
 
 ```bash
-docker exec supabase-dev-db gosu postgres psql -U supabase_admin -d postgres
+docker exec supabase-db gosu postgres psql -U supabase_admin -d postgres
 ```
 
 ### Step 1: Create the Spock Extension
@@ -214,7 +214,7 @@ CREATE EXTENSION IF NOT EXISTS spock;
 **On PRIMARY:**
 ```sql
 SELECT spock.node_create(
-    node_name := 'primary_dev',
+    node_name := 'primary',
     dsn := 'host=localhost port=5432 dbname=postgres user=spock_replicator password=your_password'
 );
 ```
@@ -222,7 +222,7 @@ SELECT spock.node_create(
 **On STANDBY:**
 ```sql
 SELECT spock.node_create(
-    node_name := 'standby_dev',
+    node_name := 'standby',
     dsn := 'host=localhost port=5432 dbname=postgres user=spock_replicator password=your_password'
 );
 ```
@@ -233,14 +233,14 @@ SELECT spock.node_create(
 ```sql
 -- First add the remote node
 INSERT INTO spock.node (node_id, node_name)
-SELECT 33686201, 'standby_dev'
-WHERE NOT EXISTS (SELECT 1 FROM spock.node WHERE node_name = 'standby_dev');
+SELECT 33686201, 'standby'
+WHERE NOT EXISTS (SELECT 1 FROM spock.node WHERE node_name = 'standby');
 
 -- Add interface to reach STANDBY through the tunnel
 SELECT spock.node_add_interface(
-    node_name := 'standby_dev',
-    interface_name := 'standby_dev',
-    dsn := 'host=cloudflared-pg-replication-dev port=45432 dbname=postgres user=spock_replicator password=your_password sslmode=disable'
+    node_name := 'standby',
+    interface_name := 'standby',
+    dsn := 'host=cloudflared-pg-replication port=35432 dbname=postgres user=spock_replicator password=your_password sslmode=disable'
 );
 ```
 
@@ -248,14 +248,14 @@ SELECT spock.node_add_interface(
 ```sql
 -- First add the remote node
 INSERT INTO spock.node (node_id, node_name)
-SELECT 144417090, 'primary_dev'
-WHERE NOT EXISTS (SELECT 1 FROM spock.node WHERE node_name = 'primary_dev');
+SELECT 144417090, 'primary'
+WHERE NOT EXISTS (SELECT 1 FROM spock.node WHERE node_name = 'primary');
 
 -- Add interface to reach PRIMARY through the tunnel
 SELECT spock.node_add_interface(
-    node_name := 'primary_dev',
-    interface_name := 'primary_dev',
-    dsn := 'host=cloudflared-pg-replication-dev port=45432 dbname=postgres user=spock_replicator password=your_password sslmode=disable'
+    node_name := 'primary',
+    interface_name := 'primary',
+    dsn := 'host=cloudflared-pg-replication port=35432 dbname=postgres user=spock_replicator password=your_password sslmode=disable'
 );
 ```
 
@@ -265,7 +265,7 @@ SELECT spock.node_add_interface(
 ```sql
 SELECT spock.sub_create(
     subscription_name := 'sub_from_standby',
-    provider_dsn := 'host=cloudflared-pg-replication-dev port=45432 dbname=postgres user=spock_replicator password=your_password sslmode=disable',
+    provider_dsn := 'host=cloudflared-pg-replication port=35432 dbname=postgres user=spock_replicator password=your_password sslmode=disable',
     replication_sets := ARRAY['default'],
     synchronize_structure := false,
     synchronize_data := false
@@ -276,7 +276,7 @@ SELECT spock.sub_create(
 ```sql
 SELECT spock.sub_create(
     subscription_name := 'sub_from_primary',
-    provider_dsn := 'host=cloudflared-pg-replication-dev port=45432 dbname=postgres user=spock_replicator password=your_password sslmode=disable',
+    provider_dsn := 'host=cloudflared-pg-replication port=35432 dbname=postgres user=spock_replicator password=your_password sslmode=disable',
     replication_sets := ARRAY['default'],
     synchronize_structure := false,
     synchronize_data := false
@@ -305,13 +305,13 @@ When a subscription is created:
 ```sql
 -- On PRIMARY
 SELECT sub_id, sub_slot_name FROM spock.subscription WHERE sub_name = 'sub_from_standby';
--- Example result: sub_id = 1713478936, slot = 'spk_postgres_standby_dev_sub_from_standby'
+-- Example result: sub_id = 1713478936, slot = 'spk_postgres_standby_sub_from_standby'
 ```
 
 **Step 2: Create the replication origin (on PRIMARY)**
 ```sql
 -- On PRIMARY
-SELECT pg_replication_origin_create('spk_postgres_standby_dev_sub_from_standby');
+SELECT pg_replication_origin_create('spk_postgres_standby_sub_from_standby');
 ```
 
 **Step 3: Update sync status to READY (on PRIMARY)**
@@ -325,7 +325,7 @@ WHERE sync_subid = 1713478936;  -- Use your actual sub_id
 **Step 4: Create the replication slot on the PROVIDER (on STANDBY)**
 ```sql
 -- On STANDBY (the provider for this subscription)
-SELECT pg_create_logical_replication_slot('spk_postgres_standby_dev_sub_from_standby', 'spock');
+SELECT pg_create_logical_replication_slot('spk_postgres_standby_sub_from_standby', 'spock');
 ```
 
 ### Fix for STANDBY (subscribing from PRIMARY)
@@ -334,13 +334,13 @@ SELECT pg_create_logical_replication_slot('spk_postgres_standby_dev_sub_from_sta
 ```sql
 -- On STANDBY
 SELECT sub_id, sub_slot_name FROM spock.subscription WHERE sub_name = 'sub_from_primary';
--- Example result: sub_id = 2768527301, slot = 'spk_postgres_primary_dev_sub_from_primary'
+-- Example result: sub_id = 2768527301, slot = 'spk_postgres_primary_sub_from_primary'
 ```
 
 **Step 2: Create the replication origin (on STANDBY)**
 ```sql
 -- On STANDBY
-SELECT pg_replication_origin_create('spk_postgres_primary_dev_sub_from_primary');
+SELECT pg_replication_origin_create('spk_postgres_primary_sub_from_primary');
 ```
 
 **Step 3: Update sync status to READY (on STANDBY)**
@@ -354,7 +354,7 @@ WHERE sync_subid = 2768527301;  -- Use your actual sub_id
 **Step 4: Create the replication slot on the PROVIDER (on PRIMARY)**
 ```sql
 -- On PRIMARY (the provider for this subscription)
-SELECT pg_create_logical_replication_slot('spk_postgres_primary_dev_sub_from_primary', 'spock');
+SELECT pg_create_logical_replication_slot('spk_postgres_primary_sub_from_primary', 'spock');
 ```
 
 ### Summary of What Goes Where
@@ -421,7 +421,7 @@ Expected output:
 ```
  subscription_name |   status    | provider_node | ...
 -------------------+-------------+---------------+----
- sub_from_standby  | replicating | standby_dev   | ...
+ sub_from_standby  | replicating | standby   | ...
 ```
 
 Status should be `replicating`, not `down` or `initializing`.
@@ -446,7 +446,7 @@ SELECT * FROM pg_replication_origin;
 
 **Insert on PRIMARY:**
 ```sql
-INSERT INTO public.spock_test (data, source) VALUES ('Test from PRIMARY', 'primary_dev');
+INSERT INTO public.spock_test (data, source) VALUES ('Test from PRIMARY', 'primary');
 ```
 
 **Check on STANDBY (should appear within seconds):**
@@ -456,7 +456,7 @@ SELECT * FROM public.spock_test ORDER BY created_at DESC LIMIT 5;
 
 **Insert on STANDBY:**
 ```sql
-INSERT INTO public.spock_test (data, source) VALUES ('Test from STANDBY', 'standby_dev');
+INSERT INTO public.spock_test (data, source) VALUES ('Test from STANDBY', 'standby');
 ```
 
 **Check on PRIMARY (should appear within seconds):**
@@ -654,17 +654,17 @@ docker exec container_name gosu postgres psql -U supabase_admin -d postgres
 ```bash
 # PRIMARY
 echo "=== PRIMARY ===" && \
-docker exec supabase-dev-db gosu postgres psql -U supabase_admin -d postgres -c "SELECT * FROM spock.sub_show_status();"
+docker exec supabase-db gosu postgres psql -U supabase_admin -d postgres -c "SELECT * FROM spock.sub_show_status();"
 
-# STANDBY
+# STANDBY (replace with your standby server hostname)
 echo "=== STANDBY ===" && \
-ssh brainwires.net "docker exec supabase-dev-db gosu postgres psql -U supabase_admin -d postgres -c \"SELECT * FROM spock.sub_show_status();\""
+ssh your-standby-server "docker exec supabase-db gosu postgres psql -U supabase_admin -d postgres -c \"SELECT * FROM spock.sub_show_status();\""
 ```
 
 ### View Spock Logs
 
 ```bash
-docker logs supabase-dev-db 2>&1 | grep -i spock | tail -30
+docker logs supabase-db 2>&1 | grep -i spock | tail -30
 ```
 
 ### Restart a Subscription

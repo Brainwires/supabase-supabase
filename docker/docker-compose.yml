@@ -5,12 +5,12 @@
 #   Destroy:            docker compose -f docker-compose.yml -f ./dev/docker-compose.dev.yml down -v --remove-orphans
 #   Reset everything:  ./reset.sh
 
-name: supabase
+name: ${COMPOSE_PROJECT_NAME:-supabase}
 
 services:
 
   studio:
-    container_name: supabase-studio
+    container_name: ${COMPOSE_PROJECT_NAME:-supabase}-studio
     image: supabase/studio:2025.12.17-sha-43f4f7f
     restart: unless-stopped
     healthcheck:
@@ -61,7 +61,7 @@ services:
       # NEXT_ANALYTICS_BACKEND_PROVIDER: bigquery
 
   kong:
-    container_name: supabase-kong
+    container_name: ${COMPOSE_PROJECT_NAME:-supabase}-kong
     image: kong:2.8.1
     restart: unless-stopped
     ports:
@@ -85,11 +85,15 @@ services:
       SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
       DASHBOARD_USERNAME: ${DASHBOARD_USERNAME}
       DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD}
+      # CORS configuration - set SITE_URL_PATTERN in .env for custom origins
+      SITE_URL_PATTERN: ${SITE_URL_PATTERN:-}
+      # Realtime container name (default uses realtime-dev prefix for tenant ID parsing)
+      REALTIME_CONTAINER_NAME: ${REALTIME_CONTAINER_NAME:-realtime-dev.supabase-realtime}
     # https://unix.stackexchange.com/a/294837
     entrypoint: bash -c 'eval "echo \"$$(cat ~/temp.yml)\"" > ~/kong.yml && /docker-entrypoint.sh kong docker-start'
 
   auth:
-    container_name: supabase-auth
+    container_name: ${COMPOSE_PROJECT_NAME:-supabase}-auth
     image: supabase/gotrue:v2.184.0
     restart: unless-stopped
     healthcheck:
@@ -172,7 +176,7 @@ services:
       # GOTRUE_HOOK_SEND_EMAIL_SECRETS: "v1,whsec_VGhpcyBpcyBhbiBleGFtcGxlIG9mIGEgc2hvcnRlciBCYXNlNjQgc3RyaW5n"
 
   rest:
-    container_name: supabase-rest
+    container_name: ${COMPOSE_PROJECT_NAME:-supabase}-rest
     image: postgrest/postgrest:v14.1
     restart: unless-stopped
     depends_on:
@@ -196,7 +200,7 @@ services:
 
   realtime:
     # This container name looks inconsistent but is correct because realtime constructs tenant id by parsing the subdomain
-    container_name: realtime-dev.supabase-realtime
+    container_name: ${REALTIME_CONTAINER_NAME:-realtime-dev.supabase-realtime}
     image: supabase/realtime:v2.68.0
     restart: unless-stopped
     depends_on:
@@ -235,7 +239,7 @@ services:
 
   # To use S3 backed storage: docker compose -f docker-compose.yml -f docker-compose.s3.yml up
   storage:
-    container_name: supabase-storage
+    container_name: ${COMPOSE_PROJECT_NAME:-supabase}-storage
     image: supabase/storage-api:v1.33.0
     restart: unless-stopped
     volumes:
@@ -279,7 +283,7 @@ services:
       IMGPROXY_URL: http://imgproxy:5001
 
   imgproxy:
-    container_name: supabase-imgproxy
+    container_name: ${COMPOSE_PROJECT_NAME:-supabase}-imgproxy
     image: darthsim/imgproxy:v3.30.1
     restart: unless-stopped
     volumes:
@@ -302,7 +306,7 @@ services:
       IMGPROXY_MAX_SRC_RESOLUTION: 16.8
 
   meta:
-    container_name: supabase-meta
+    container_name: ${COMPOSE_PROJECT_NAME:-supabase}-meta
     image: supabase/postgres-meta:v0.95.1
     restart: unless-stopped
     depends_on:
@@ -321,7 +325,7 @@ services:
       CRYPTO_KEY: ${PG_META_CRYPTO_KEY}
 
   functions:
-    container_name: supabase-edge-functions
+    container_name: ${COMPOSE_PROJECT_NAME:-supabase}-edge-functions
     image: supabase/edge-runtime:v1.69.28
     restart: unless-stopped
     volumes:
@@ -344,8 +348,58 @@ services:
         "/home/deno/functions/main"
       ]
 
+  ## MCP Server - Model Context Protocol for AI integrations
+  ## DISABLED BY DEFAULT - Run with: docker compose --profile mcp up
+  ## Requires building the MCP image first: docker build -t supabase-mcp -f ./volumes/mcp/Dockerfile .
+  mcp:
+    container_name: ${COMPOSE_PROJECT_NAME:-supabase}-mcp
+    profiles:
+      - mcp
+    build:
+      context: .
+      dockerfile: ./volumes/mcp/Dockerfile
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3100/health"
+        ]
+      timeout: 5s
+      interval: 10s
+      retries: 3
+    depends_on:
+      db:
+        condition: service_healthy
+      rest:
+        condition: service_started
+    environment:
+      SUPABASE_URL: http://kong:8000
+      SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      SUPABASE_AUTH_JWT_SECRET: ${JWT_SECRET}
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+    command:
+      [
+        "bun",
+        "run",
+        "dist/index.js",
+        "--transport", "http",
+        "--port", "3100",
+        "--host", "0.0.0.0",
+        "--url", "http://kong:8000",
+        "--anon-key", "${ANON_KEY}",
+        "--service-key", "${SERVICE_ROLE_KEY}",
+        "--jwt-secret", "${JWT_SECRET}",
+        "--db-url", "postgresql://postgres:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}"
+      ]
+
   analytics:
-    container_name: supabase-analytics
+    container_name: ${COMPOSE_PROJECT_NAME:-supabase}-analytics
     image: supabase/logflare:1.27.0
     restart: unless-stopped
     ports:
@@ -382,6 +436,7 @@ services:
       LOGFLARE_PRIVATE_ACCESS_TOKEN: ${LOGFLARE_PRIVATE_ACCESS_TOKEN}
       LOGFLARE_SINGLE_TENANT: true
       LOGFLARE_SUPABASE_MODE: true
+      LOGFLARE_MIN_CLUSTER_SIZE: 1
 
       # Comment variables to use Big Query backend for analytics
       POSTGRES_BACKEND_URL: postgresql://supabase_admin:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/_supabase
@@ -393,10 +448,20 @@ services:
 
   # Comment out everything below this point if you are using an external Postgres database
   db:
-    container_name: supabase-db
+    container_name: ${COMPOSE_PROJECT_NAME:-supabase}-db
+    # Standard Supabase PostgreSQL image (default)
     image: supabase/postgres:15.8.1.085
+    # Uncomment for Spock bi-directional replication support (requires supabase-postgres-spock:15 image)
+    # See SPOCK-SETUP.md for complete setup guide
+    # image: supabase-postgres-spock:15
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
+    # ports:
+    #   - "${DB_PORT_PREFIX:-1}${POSTGRES_PORT}:${POSTGRES_PORT}"
     restart: unless-stopped
     volumes:
+      # Uncomment for Spock: Custom postgresql.conf with spock enabled
+      # - ./volumes/db/postgresql-spock.conf:/etc/postgresql/postgresql.conf:Z
       - ./volumes/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:Z
       # Must be superuser to create event trigger
       - ./volumes/db/webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:Z
@@ -412,6 +477,8 @@ services:
       - ./volumes/db/logs.sql:/docker-entrypoint-initdb.d/migrations/99-logs.sql:Z
       # Changes required for Pooler support
       - ./volumes/db/pooler.sql:/docker-entrypoint-initdb.d/migrations/99-pooler.sql:Z
+      # Uncomment for Spock: Replication initialization script (conditional on REPLICA_HOST_IP)
+      # - ./volumes/db/99-replication-init.sh:/docker-entrypoint-initdb.d/init-scripts/99-replication-init.sh:Z
       # Use named volume to persist pgsodium decryption key between restarts
       - db-config:/etc/postgresql-custom
     healthcheck:
@@ -440,6 +507,10 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXP: ${JWT_EXPIRY}
+      # Uncomment for Spock: Replication configuration (for init script)
+      # REPLICATION_PASSWORD: ${REPLICATION_PASSWORD:-}
+      # REPLICA_HOST_IP: ${REPLICA_HOST_IP:-}
+    # Standard command (for non-Spock deployments)
     command:
       [
         "postgres",
@@ -448,9 +519,32 @@ services:
         "-c",
         "log_min_messages=fatal" # prevents Realtime polling queries from appearing in logs
       ]
+    # Uncomment for Spock: Replace the command above with this block for bi-directional replication
+    # command:
+    #   - /bin/bash
+    #   - -c
+    #   - |
+    #     # Add replication entry to pg_hba.conf if not present
+    #     if [ -n "$$REPLICA_HOST_IP" ]; then
+    #       PG_HBA="/etc/postgresql/pg_hba.conf"
+    #       if ! grep -q "host.*replication.*replicator.*0.0.0.0/0" "$$PG_HBA" 2>/dev/null; then
+    #         echo "host    replication     replicator      0.0.0.0/0        scram-sha-256" >> "$$PG_HBA"
+    #         echo "Added replication entry to pg_hba.conf"
+    #       fi
+    #     fi
+    #     exec gosu postgres postgres \
+    #       -c config_file=/etc/postgresql/postgresql.conf \
+    #       -c log_min_messages=log \
+    #       -c wal_level=${WAL_LEVEL:-logical} \
+    #       -c max_wal_senders=${MAX_WAL_SENDERS:-10} \
+    #       -c max_replication_slots=${MAX_REPLICATION_SLOTS:-10} \
+    #       -c wal_keep_size=${WAL_KEEP_SIZE:-1GB} \
+    #       -c hot_standby=${HOT_STANDBY:-on} \
+    #       -c track_commit_timestamp=on \
+    #       -c shared_preload_libraries='pg_stat_statements,pgaudit,plpgsql,plpgsql_check,pg_cron,pg_net,pgsodium,timescaledb,auto_explain,pg_tle,supabase_vault,spock'
 
   vector:
-    container_name: supabase-vector
+    container_name: ${COMPOSE_PROJECT_NAME:-supabase}-vector
     image: timberio/vector:0.28.1-alpine
     restart: unless-stopped
     volumes:
@@ -481,11 +575,11 @@ services:
 
   # Update the DATABASE_URL if you are using an external Postgres database
   supavisor:
-    container_name: supabase-pooler
+    container_name: ${COMPOSE_PROJECT_NAME:-supabase}-pooler
     image: supabase/supavisor:2.7.4
     restart: unless-stopped
     ports:
-      - ${POSTGRES_PORT}:5432
+      - ${POOLER_DB_PORT:-5432}:5432
       - ${POOLER_PROXY_PORT_TRANSACTION}:6543
     volumes:
       - ./volumes/pooler/pooler.exs:/etc/pooler/pooler.exs:ro,z
