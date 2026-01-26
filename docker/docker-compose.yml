@@ -403,7 +403,7 @@ services:
     image: supabase/logflare:1.27.0
     restart: unless-stopped
     ports:
-      - 4000:4000
+      - ${ANALYTICS_PORT:-4000}:4000
     # Uncomment to use Big Query backend for analytics
     # volumes:
     #   - type: bind
