@@ -86,12 +86,55 @@ See the [security section](https://supabase.com/docs/guides/self-hosting/docker#
 
 This Docker setup uses a custom PostgreSQL image that includes the [Spock](https://github.com/pgEdge/spock) extension for bi-directional logical replication. This enables active-active replication between two or more Supabase instances.
 
+### Prerequisites
+
+⚠️ **Supabase CLI Required for Migrations**
+
+When using Spock replication, the [Supabase CLI](https://supabase.com/docs/guides/cli) is **strongly recommended** for running database migrations.
+
+**Why?** Spock does not automatically replicate DDL (schema changes) like `CREATE TABLE`, `ALTER TABLE`, etc. All DDL statements must be wrapped in `spock.replicate_ddl()` to replicate to other nodes. The Supabase CLI handles this automatically when Spock is enabled in your `config.toml`.
+
+**Without the CLI**, you must manually wrap every DDL statement:
+```sql
+-- Instead of this (won't replicate):
+CREATE TABLE public.users (id SERIAL PRIMARY KEY, name TEXT);
+
+-- You must write this:
+SELECT spock.replicate_ddl($$
+    CREATE TABLE public.users (id SERIAL PRIMARY KEY, name TEXT)
+$$);
+```
+
+**With the CLI**, your migrations stay clean and the wrapping is automatic:
+```sql
+-- supabase/migrations/20240101000000_create_users.sql
+-- Just write normal SQL - CLI wraps it automatically
+CREATE TABLE public.users (id SERIAL PRIMARY KEY, name TEXT);
+```
+
+To enable Spock in the CLI, add to your `config.toml`:
+```toml
+[db.spock]
+enabled = true
+replication_sets = ["default", "ddl_sql"]
+auto_add_tables = true
+node_offset = 1  # Use 2 on standby node
+```
+
+Then run migrations with:
+```bash
+supabase migration up \
+  --db-url "postgresql://postgres:password@primary:5432/postgres" \
+  --spock-remote-dsn "postgresql://postgres:password@standby:5432/postgres"
+```
+
 ### How It Works
 
 - The Spock extension is automatically installed when the database initializes
 - A replication user (`spock_replicator`) is created automatically
 - pg_hba.conf is pre-configured to allow replication connections
 - An event trigger automatically adds new tables to the `default` replication set
+- Data changes (INSERT, UPDATE, DELETE) replicate automatically once tables are in a replication set
 
 ### Setting Up Bi-Directional Replication
 
@@ -117,7 +160,16 @@ For two Supabase instances (e.g., PRIMARY and STANDBY):
    docker exec <standby-db-container> /spock-setup.sh standby <primary-host> <primary-db-port>
    ```
 
-4. **Create tables using `spock.replicate_ddl()`**:
+4. **Run migrations using Supabase CLI** (recommended) or manually wrap DDL:
+
+   **Using CLI (recommended):**
+   ```bash
+   supabase migration up \
+     --db-url "postgresql://postgres:password@primary:5432/postgres" \
+     --spock-remote-dsn "postgresql://postgres:password@standby:5432/postgres"
+   ```
+
+   **Manual alternative:**
    ```sql
    -- Run on either node - DDL replicates to all subscribers
    SELECT spock.replicate_ddl($$
@@ -126,17 +178,21 @@ For two Supabase instances (e.g., PRIMARY and STANDBY):
            data TEXT
        )
    $$);
-   -- Table is automatically added to 'default' replication set on all nodes
+   ```
 
-   -- On STANDBY only, set different sequence range to avoid PK conflicts
+5. **Configure sequences** to avoid primary key conflicts:
+   ```sql
+   -- On STANDBY only, set different sequence range
    ALTER SEQUENCE my_table_id_seq RESTART WITH 1000000;
    ```
 
+   Note: The CLI handles this automatically when `node_offset` is configured.
+
 ### Important Notes
 
-- **DDL replication**: Wrap DDL in `spock.replicate_ddl()` to replicate schema changes to all nodes
-- **Auto repset**: Tables are automatically added to the `default` replication set
-- **Sequence conflicts**: Use different sequence ranges on each node to avoid primary key conflicts
+- **DDL replication**: DDL must be wrapped in `spock.replicate_ddl()` - use Supabase CLI for automatic wrapping
+- **Auto repset**: Tables are automatically added to the `default` replication set via event trigger
+- **Sequence conflicts**: Use different sequence ranges on each node (CLI handles this with `node_offset`)
 - **Change the default password**: Update `REPLICATION_PASSWORD` in `.env` for production use
 
 ### Disabling Replication
