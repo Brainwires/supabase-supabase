@@ -36,7 +36,7 @@ This document describes the complete setup process for Spock bi-directional repl
 │  │ cloudflared-pg-         │   │         │   │ cloudflared-pg-         │   │
 │  │ replication             │   │         │   │ replication             │   │
 │  │ (connects to STANDBY)   │   │         │   │ (connects to PRIMARY)   │   │
-│  │ port ${CF_PG_PORT}              │   │         │   │ port ${CF_PG_PORT}              │   │
+│  │ port ${PG_REPLICATION_PORT}              │   │         │   │ port ${PG_REPLICATION_PORT}              │   │
 │  └───────────┬─────────────┘   │         │   └───────────┬─────────────┘   │
 │              │                 │         │               │                 │
 └──────────────┼─────────────────┘         └───────────────┼─────────────────┘
@@ -124,7 +124,7 @@ services:
     restart: unless-stopped
     networks:
       - supabase_default
-    command: access tcp --hostname ${CF_PG_HOSTNAME} --url 0.0.0.0:${CF_PG_PORT}
+    command: access tcp --hostname ${CF_PG_HOSTNAME} --url 0.0.0.0:${PG_REPLICATION_PORT}
 
 networks:
   supabase_default:
@@ -154,7 +154,7 @@ docker compose up -d
 
 ```bash
 # From PRIMARY, test connection to STANDBY through tunnel
-docker exec supabase-db psql -h cloudflared-pg-replication -p ${CF_PG_PORT} -U postgres -c "SELECT 1;"
+docker exec supabase-db psql -h cloudflared-pg-replication -p ${PG_REPLICATION_PORT} -U postgres -c "SELECT 1;"
 ```
 
 ---
@@ -240,7 +240,7 @@ WHERE NOT EXISTS (SELECT 1 FROM spock.node WHERE node_name = 'standby');
 SELECT spock.node_add_interface(
     node_name := 'standby',
     interface_name := 'standby',
-    dsn := 'host=cloudflared-pg-replication port=${CF_PG_PORT} dbname=postgres user=spock_replicator password=your_password sslmode=disable'
+    dsn := 'host=cloudflared-pg-replication port=${PG_REPLICATION_PORT} dbname=postgres user=spock_replicator password=your_password sslmode=disable'
 );
 ```
 
@@ -255,7 +255,7 @@ WHERE NOT EXISTS (SELECT 1 FROM spock.node WHERE node_name = 'primary');
 SELECT spock.node_add_interface(
     node_name := 'primary',
     interface_name := 'primary',
-    dsn := 'host=cloudflared-pg-replication port=${CF_PG_PORT} dbname=postgres user=spock_replicator password=your_password sslmode=disable'
+    dsn := 'host=cloudflared-pg-replication port=${PG_REPLICATION_PORT} dbname=postgres user=spock_replicator password=your_password sslmode=disable'
 );
 ```
 
@@ -265,7 +265,7 @@ SELECT spock.node_add_interface(
 ```sql
 SELECT spock.sub_create(
     subscription_name := 'sub_from_standby',
-    provider_dsn := 'host=cloudflared-pg-replication port=${CF_PG_PORT} dbname=postgres user=spock_replicator password=your_password sslmode=disable',
+    provider_dsn := 'host=cloudflared-pg-replication port=${PG_REPLICATION_PORT} dbname=postgres user=spock_replicator password=your_password sslmode=disable',
     replication_sets := ARRAY['default'],
     synchronize_structure := false,
     synchronize_data := false
@@ -276,7 +276,7 @@ SELECT spock.sub_create(
 ```sql
 SELECT spock.sub_create(
     subscription_name := 'sub_from_primary',
-    provider_dsn := 'host=cloudflared-pg-replication port=${CF_PG_PORT} dbname=postgres user=spock_replicator password=your_password sslmode=disable',
+    provider_dsn := 'host=cloudflared-pg-replication port=${PG_REPLICATION_PORT} dbname=postgres user=spock_replicator password=your_password sslmode=disable',
     replication_sets := ARRAY['default'],
     synchronize_structure := false,
     synchronize_data := false
