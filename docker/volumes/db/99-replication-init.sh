@@ -1,13 +1,18 @@
 #!/bin/bash
-# Replication initialization script for PostgreSQL streaming replication
-# This script runs on container startup and configures pg_hba.conf for replication
-# Only executes if REPLICA_HOST_IP is set
+# Spock replication user initialization script
+# This script runs on container startup and configures:
+# 1. spock_replicator user with proper grants
+# 2. pg_hba.conf for replication access
+#
+# Note: The Spock extension is created by 98-spock.sql migration
+# This script only runs when REPLICA_HOST_IP is set
 
 set -e
 
-# Only run if replication is configured
+# Check if replication is configured
 if [ -z "$REPLICA_HOST_IP" ]; then
-  echo "REPLICA_HOST_IP not set, skipping replication configuration"
+  echo "REPLICA_HOST_IP not set, skipping replication user configuration"
+  echo "Spock extension is available but bi-directional replication is disabled"
   exit 0
 fi
 
@@ -17,37 +22,56 @@ if [ -z "$REPLICATION_PASSWORD" ]; then
   exit 0
 fi
 
-echo "Configuring replication for replica at $REPLICA_HOST_IP"
+echo "=== Configuring Spock Replication ==="
+echo "REPLICA_HOST_IP=$REPLICA_HOST_IP"
 
-# Create replication user if it doesn't exist
-# This runs as the postgres user via docker-entrypoint
+# Create spock_replicator user with proper grants
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
   DO \$\$
   BEGIN
-    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'replicator') THEN
-      CREATE USER replicator WITH REPLICATION LOGIN PASSWORD '$REPLICATION_PASSWORD';
-      RAISE NOTICE 'Created replication user: replicator';
+    -- Create spock_replicator user if it doesn't exist
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'spock_replicator') THEN
+      CREATE USER spock_replicator WITH REPLICATION LOGIN PASSWORD '$REPLICATION_PASSWORD';
+      RAISE NOTICE 'Created replication user: spock_replicator';
     ELSE
       -- Update password if user exists
-      ALTER USER replicator WITH PASSWORD '$REPLICATION_PASSWORD';
-      RAISE NOTICE 'Updated replication user password';
+      ALTER USER spock_replicator WITH PASSWORD '$REPLICATION_PASSWORD';
+      RAISE NOTICE 'Updated spock_replicator password';
     END IF;
   END
   \$\$;
+
+  -- Grant permissions to spock_replicator
+  GRANT ALL ON SCHEMA spock TO spock_replicator;
+  GRANT ALL ON ALL TABLES IN SCHEMA spock TO spock_replicator;
+  GRANT USAGE ON SCHEMA public TO spock_replicator;
+  GRANT SELECT ON ALL TABLES IN SCHEMA public TO spock_replicator;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO spock_replicator;
 EOSQL
 
-# Add replication line to pg_hba.conf if not present
+echo "Spock replicator user configured"
+
+# Add replication lines to pg_hba.conf if not present
 PG_HBA="/var/lib/postgresql/data/pg_hba.conf"
 if [ -f "$PG_HBA" ]; then
-  if ! grep -q "host.*replication.*replicator.*${REPLICA_HOST_IP}" "$PG_HBA" 2>/dev/null; then
-    echo "host    replication     replicator      ${REPLICA_HOST_IP}/32        scram-sha-256" >> "$PG_HBA"
-    echo "Replication host added to pg_hba.conf for $REPLICA_HOST_IP"
-  else
-    echo "Replication host already configured in pg_hba.conf"
+  # Add entry for replication connections
+  if ! grep -q "host.*replication.*spock_replicator.*0.0.0.0/0" "$PG_HBA" 2>/dev/null; then
+    echo "host    replication     spock_replicator      0.0.0.0/0        scram-sha-256" >> "$PG_HBA"
+    echo "Added replication entry to pg_hba.conf"
+  fi
+
+  # Add entry for regular connections (needed for Spock)
+  if ! grep -q "host.*all.*spock_replicator.*0.0.0.0/0" "$PG_HBA" 2>/dev/null; then
+    echo "host    all             spock_replicator      0.0.0.0/0        scram-sha-256" >> "$PG_HBA"
+    echo "Added spock_replicator access entry to pg_hba.conf"
   fi
 else
   echo "WARNING: pg_hba.conf not found at $PG_HBA"
-  echo "This script may be running too early in the initialization"
 fi
 
-echo "Replication configuration complete"
+echo "=== Spock replication configuration complete ==="
+echo "Next steps:"
+echo "  1. Create local node: SELECT spock.node_create(...);"
+echo "  2. Add remote node interface: SELECT spock.node_add_interface(...);"
+echo "  3. Create subscription: SELECT spock.sub_create(...);"
+echo "  See SPOCK-SETUP.md for detailed instructions"

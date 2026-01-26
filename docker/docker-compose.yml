@@ -461,6 +461,10 @@ services:
     volumes:
       # Custom postgresql.conf with spock enabled
       - ./volumes/db/postgresql-spock.conf:/etc/postgresql/postgresql.conf:Z
+      # Spock extension SQL (missing from Nix build, must be mounted)
+      - ./volumes/db/spock--3.1.8.sql:/usr/share/postgresql/extension/spock--3.1.8.sql:Z
+      # Create Spock extension during initialization
+      - ./volumes/db/99-spock.sql:/docker-entrypoint-initdb.d/migrations/98-spock.sql:Z
       - ./volumes/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:Z
       # Must be superuser to create event trigger
       - ./volumes/db/webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:Z
@@ -478,6 +482,8 @@ services:
       - ./volumes/db/pooler.sql:/docker-entrypoint-initdb.d/migrations/99-pooler.sql:Z
       # Replication initialization script (only runs if REPLICA_HOST_IP is set)
       - ./volumes/db/99-replication-init.sh:/docker-entrypoint-initdb.d/init-scripts/99-replication-init.sh:Z
+      # Spock setup script for bi-directional replication (run manually after both nodes are up)
+      - ./volumes/db/spock-setup.sh:/spock-setup.sh:Z
       # Use named volume to persist pgsodium decryption key between restarts
       - db-config:/etc/postgresql-custom
     healthcheck:
