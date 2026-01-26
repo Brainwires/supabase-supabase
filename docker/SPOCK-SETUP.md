@@ -60,7 +60,7 @@ This document describes the complete setup process for Spock bi-directional repl
 
 ### 1. Custom Docker Image with Spock
 
-The standard Supabase PostgreSQL image does not include Spock. A custom image `supabase-postgres-spock:15` was built with:
+The standard Supabase PostgreSQL image does not include Spock. A custom image `ghcr.io/brainwires/supabase-postgres-spock:15` was built with:
 - Spock 3.1.8 extension
 - PostgreSQL 15
 - All required patches for Spock compatibility
@@ -69,7 +69,7 @@ The image must be present on both servers and referenced in `docker-compose.yml`
 
 ```yaml
 db:
-  image: supabase-postgres-spock:15
+  image: ghcr.io/brainwires/supabase-postgres-spock:15
 ```
 
 ### 2. Required PostgreSQL Settings
@@ -720,5 +720,5 @@ WHERE plugin = 'spock';
 
 - **Spock Version**: 3.1.8
 - **PostgreSQL Version**: 15.14
-- **Docker Image**: supabase-postgres-spock:15
+- **Docker Image**: ghcr.io/brainwires/supabase-postgres-spock:15
 - **Date Tested**: 2026-01-25

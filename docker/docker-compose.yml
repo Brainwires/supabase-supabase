@@ -452,7 +452,7 @@ services:
     # Spock-enabled PostgreSQL image (supports bi-directional replication when configured)
     # Works as standard PostgreSQL when replication is not configured
     # See SPOCK-SETUP.md for replication setup guide
-    image: supabase-postgres-spock:15
+    image: ghcr.io/brainwires/supabase-postgres-spock:15
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
