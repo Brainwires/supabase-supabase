@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     networks:
       - supabase_default
-    command: access tcp --hostname ${CF_PG_HOSTNAME} --url 0.0.0.0:${CF_PG_PORT:-35432}
+    command: access tcp --hostname ${CF_PG_HOSTNAME} --url 0.0.0.0:${CF_PG_PORT}
 
 networks:
   supabase_default:

@@ -124,7 +124,7 @@ services:
     restart: unless-stopped
     networks:
       - supabase_default
-    command: access tcp --hostname ${CF_PG_HOSTNAME} --url 0.0.0.0:${CF_PG_PORT:-35432}
+    command: access tcp --hostname ${CF_PG_HOSTNAME} --url 0.0.0.0:${CF_PG_PORT}
 
 networks:
   supabase_default:
@@ -154,7 +154,7 @@ docker compose up -d
 
 ```bash
 # From PRIMARY, test connection to STANDBY through tunnel
-docker exec supabase-db psql -h cloudflared-pg-replication -p ${CF_PG_PORT:-35432} -U postgres -c "SELECT 1;"
+docker exec supabase-db psql -h cloudflared-pg-replication -p ${CF_PG_PORT} -U postgres -c "SELECT 1;"
 ```
 
 ---
