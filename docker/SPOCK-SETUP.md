@@ -124,7 +124,7 @@ services:
     restart: unless-stopped
     networks:
       - supabase_default
-    command: access tcp --hostname ${CF_PG_HOSTNAME} --url 0.0.0.0:${PG_REPLICATION_PORT}
+    command: access tcp --hostname ${PG_REPLICATION_HOSTNAME} --url 0.0.0.0:${PG_REPLICATION_PORT}
 
 networks:
   supabase_default:
@@ -135,12 +135,12 @@ networks:
 
 **On PRIMARY (connects TO standby):**
 ```
-CF_PG_HOSTNAME=pg-standby.example.com
+PG_REPLICATION_HOSTNAME=pg-standby.example.com
 ```
 
 **On STANDBY (connects TO primary):**
 ```
-CF_PG_HOSTNAME=pg-primary.example.com
+PG_REPLICATION_HOSTNAME=pg-primary.example.com
 ```
 
 ### Start the tunnel
