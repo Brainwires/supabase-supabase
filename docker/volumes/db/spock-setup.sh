@@ -11,7 +11,7 @@ set -e
 LOCAL_NODE_NAME=${1:-primary}
 REMOTE_HOST=${2:-host.docker.internal}
 REMOTE_PORT=${3:-5432}
-REPLICATION_PASSWORD=${REPLICATION_PASSWORD:-spock-replication-test-password}
+REPLICATION_PASSWORD=${REPLICATION_PASSWORD:-spock_replication_password_change_me}
 
 # Determine remote node name (opposite of local)
 if [ "$LOCAL_NODE_NAME" = "primary" ]; then
@@ -110,7 +110,7 @@ if [ "$SUB_EXISTS" = "0" ]; then
     SUB_ID=$(psql -U supabase_admin -d postgres -tAc "SELECT spock.sub_create(
         subscription_name := '$SUB_NAME',
         provider_dsn := '$REMOTE_DSN',
-        replication_sets := ARRAY['default'],
+        replication_sets := ARRAY['default', 'ddl_sql'],
         synchronize_structure := false,
         synchronize_data := false
     );")

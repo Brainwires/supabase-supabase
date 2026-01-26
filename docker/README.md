@@ -82,6 +82,67 @@ Before deploying to production, you must:
 
 See the [security section](https://supabase.com/docs/guides/self-hosting/docker#configuring-and-securing-supabase) in the documentation.
 
+## Bi-Directional Replication with Spock
+
+This Docker setup uses a custom PostgreSQL image that includes the [Spock](https://github.com/pgEdge/spock) extension for bi-directional logical replication. This enables active-active replication between two or more Supabase instances.
+
+### How It Works
+
+- The Spock extension is automatically installed when the database initializes
+- A replication user (`spock_replicator`) is created automatically
+- pg_hba.conf is pre-configured to allow replication connections
+- An event trigger automatically adds new tables to the `default` replication set
+
+### Setting Up Bi-Directional Replication
+
+For two Supabase instances (e.g., PRIMARY and STANDBY):
+
+1. **Configure both instances** with different ports and unique `COMPOSE_PROJECT_NAME` values in their `.env` files
+
+2. **Start both instances**:
+   ```bash
+   # On primary server
+   docker compose up -d
+
+   # On standby server
+   docker compose up -d
+   ```
+
+3. **Run the setup script on each node** (after both are running):
+   ```bash
+   # On PRIMARY first - creates the primary node
+   docker exec <primary-db-container> /spock-setup.sh primary <standby-host> <standby-db-port>
+
+   # On STANDBY - subscribe to PRIMARY
+   docker exec <standby-db-container> /spock-setup.sh standby <primary-host> <primary-db-port>
+   ```
+
+4. **Create tables using `spock.replicate_ddl()`**:
+   ```sql
+   -- Run on either node - DDL replicates to all subscribers
+   SELECT spock.replicate_ddl($$
+       CREATE TABLE public.my_table (
+           id SERIAL PRIMARY KEY,
+           data TEXT
+       )
+   $$);
+   -- Table is automatically added to 'default' replication set on all nodes
+
+   -- On STANDBY only, set different sequence range to avoid PK conflicts
+   ALTER SEQUENCE my_table_id_seq RESTART WITH 1000000;
+   ```
+
+### Important Notes
+
+- **DDL replication**: Wrap DDL in `spock.replicate_ddl()` to replicate schema changes to all nodes
+- **Auto repset**: Tables are automatically added to the `default` replication set
+- **Sequence conflicts**: Use different sequence ranges on each node to avoid primary key conflicts
+- **Change the default password**: Update `REPLICATION_PASSWORD` in `.env` for production use
+
+### Disabling Replication
+
+If you don't need replication, you can use this setup as a standard Supabase installation. The Spock extension is installed but inactive until you run the setup script.
+
 ## License
 
 This repository is licensed under the Apache 2.0 License. See the main [Supabase repository](https://github.com/supabase/supabase) for details.

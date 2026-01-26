@@ -451,7 +451,6 @@ services:
     container_name: ${COMPOSE_PROJECT_NAME:-supabase}-db
     # Spock-enabled PostgreSQL image (supports bi-directional replication when configured)
     # Works as standard PostgreSQL when replication is not configured
-    # See SPOCK-SETUP.md for replication setup guide
     image: ghcr.io/brainwires/supabase-postgres-spock:15
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -461,10 +460,14 @@ services:
     volumes:
       # Custom postgresql.conf with spock enabled
       - ./volumes/db/postgresql-spock.conf:/etc/postgresql/postgresql.conf:Z
+      # Custom pg_hba.conf with replication access pre-configured
+      - ./volumes/db/pg_hba.conf:/etc/postgresql/pg_hba.conf:Z
       # Spock extension SQL (missing from Nix build, must be mounted)
       - ./volumes/db/spock--3.1.8.sql:/usr/share/postgresql/extension/spock--3.1.8.sql:Z
       # Create Spock extension during initialization
-      - ./volumes/db/99-spock.sql:/docker-entrypoint-initdb.d/migrations/98-spock.sql:Z
+      - ./volumes/db/99-spock.sql:/docker-entrypoint-initdb.d/migrations/97-spock.sql:Z
+      # Create Spock replication user during initialization
+      - ./volumes/db/98-spock-replication.sql:/docker-entrypoint-initdb.d/migrations/98-spock-replication.sql:Z
       - ./volumes/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:Z
       # Must be superuser to create event trigger
       - ./volumes/db/webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:Z
@@ -475,14 +478,12 @@ services:
       # PGDATA directory is persisted between restarts
       - ./volumes/db/data:/var/lib/postgresql/data:Z
       # Changes required for internal supabase data such as _analytics
-      - ./volumes/db/_supabase.sql:/docker-entrypoint-initdb.d/migrations/97-_supabase.sql:Z
+      - ./volumes/db/_supabase.sql:/docker-entrypoint-initdb.d/migrations/96-_supabase.sql:Z
       # Changes required for Analytics support
       - ./volumes/db/logs.sql:/docker-entrypoint-initdb.d/migrations/99-logs.sql:Z
       # Changes required for Pooler support
       - ./volumes/db/pooler.sql:/docker-entrypoint-initdb.d/migrations/99-pooler.sql:Z
-      # Replication initialization script (only runs if REPLICA_HOST_IP is set)
-      - ./volumes/db/99-replication-init.sh:/docker-entrypoint-initdb.d/init-scripts/99-replication-init.sh:Z
-      # Spock setup script for bi-directional replication (run manually after both nodes are up)
+      # Spock setup script for bi-directional replication (run after both nodes are up)
       - ./volumes/db/spock-setup.sh:/spock-setup.sh:Z
       # Use named volume to persist pgsodium decryption key between restarts
       - db-config:/etc/postgresql-custom
@@ -512,11 +513,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXP: ${JWT_EXPIRY}
-      # Replication configuration (leave empty to disable replication)
-      REPLICATION_PASSWORD: ${REPLICATION_PASSWORD}
-      REPLICA_HOST_IP: ${REPLICA_HOST_IP}
     # Command with Spock-enabled shared_preload_libraries
-    # Replication is configured via 99-replication-init.sh when REPLICA_HOST_IP is set
     command:
       - postgres
       - -c
