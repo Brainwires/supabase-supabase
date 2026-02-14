@@ -10,8 +10,8 @@ name: ${COMPOSE_PROJECT_NAME:-supabase}
 services:
 
   studio:
-    container_name: ${COMPOSE_PROJECT_NAME:-supabase}-studio
-    image: supabase/studio:2025.12.17-sha-43f4f7f
+container_name: ${COMPOSE_PROJECT_NAME:-supabase}-studio
+    image: supabase/studio:2026.01.27-sha-6aa59ff
     restart: unless-stopped
     healthcheck:
       test:
@@ -59,6 +59,11 @@ services:
       NEXT_ANALYTICS_BACKEND_PROVIDER: postgres
       # Uncomment to use Big Query backend for analytics
       # NEXT_ANALYTICS_BACKEND_PROVIDER: bigquery
+      SNIPPETS_MANAGEMENT_FOLDER: /app/snippets
+      EDGE_FUNCTIONS_MANAGEMENT_FOLDER: /app/edge-functions
+    volumes:
+      - ./volumes/snippets:/app/snippets:Z
+      - ./volumes/functions:/app/edge-functions:Z
 
   kong:
     container_name: ${COMPOSE_PROJECT_NAME:-supabase}-kong
@@ -93,8 +98,8 @@ services:
     entrypoint: bash -c 'eval "echo \"$$(cat ~/temp.yml)\"" > ~/kong.yml && /docker-entrypoint.sh kong docker-start'
 
   auth:
-    container_name: ${COMPOSE_PROJECT_NAME:-supabase}-auth
-    image: supabase/gotrue:v2.184.0
+container_name: ${COMPOSE_PROJECT_NAME:-supabase}-auth
+    image: supabase/gotrue:v2.185.0
     restart: unless-stopped
     healthcheck:
       test:
@@ -182,8 +187,8 @@ services:
       # GOTRUE_HOOK_SEND_EMAIL_SECRETS: "v1,whsec_VGhpcyBpcyBhbiBleGFtcGxlIG9mIGEgc2hvcnRlciBCYXNlNjQgc3RyaW5n"
 
   rest:
-    container_name: ${COMPOSE_PROJECT_NAME:-supabase}-rest
-    image: postgrest/postgrest:v14.1
+container_name: ${COMPOSE_PROJECT_NAME:-supabase}-rest
+    image: postgrest/postgrest:v14.3
     restart: unless-stopped
     depends_on:
       db:
@@ -206,8 +211,8 @@ services:
 
   realtime:
     # This container name looks inconsistent but is correct because realtime constructs tenant id by parsing the subdomain
-    container_name: ${REALTIME_CONTAINER_NAME:-realtime-dev.supabase-realtime}
-    image: supabase/realtime:v2.68.0
+container_name: ${REALTIME_CONTAINER_NAME:-realtime-dev.supabase-realtime}
+    image: supabase/realtime:v2.72.0
     restart: unless-stopped
     depends_on:
       db:
@@ -242,11 +247,12 @@ services:
       APP_NAME: realtime
       SEED_SELF_HOST: "true"
       RUN_JANITOR: "true"
+      DISABLE_HEALTHCHECK_LOGGING: "true"
 
   # To use S3 backed storage: docker compose -f docker-compose.yml -f docker-compose.s3.yml up
   storage:
-    container_name: ${COMPOSE_PROJECT_NAME:-supabase}-storage
-    image: supabase/storage-api:v1.33.0
+container_name: ${COMPOSE_PROJECT_NAME:-supabase}-storage
+    image: supabase/storage-api:v1.37.1
     restart: unless-stopped
     volumes:
       - ./volumes/storage:/var/lib/storage:z
@@ -312,8 +318,8 @@ services:
       IMGPROXY_MAX_SRC_RESOLUTION: 16.8
 
   meta:
-    container_name: ${COMPOSE_PROJECT_NAME:-supabase}-meta
-    image: supabase/postgres-meta:v0.95.1
+container_name: ${COMPOSE_PROJECT_NAME:-supabase}-meta
+    image: supabase/postgres-meta:v0.95.2
     restart: unless-stopped
     depends_on:
       db:
@@ -331,8 +337,8 @@ services:
       CRYPTO_KEY: ${PG_META_CRYPTO_KEY}
 
   functions:
-    container_name: ${COMPOSE_PROJECT_NAME:-supabase}-edge-functions
-    image: supabase/edge-runtime:v1.69.28
+container_name: ${COMPOSE_PROJECT_NAME:-supabase}-edge-functions
+    image: supabase/edge-runtime:v1.70.0
     restart: unless-stopped
     volumes:
       - ./volumes/functions:/home/deno/functions:Z
@@ -405,8 +411,8 @@ services:
       ]
 
   analytics:
-    container_name: ${COMPOSE_PROJECT_NAME:-supabase}-analytics
-    image: supabase/logflare:1.27.0
+container_name: ${COMPOSE_PROJECT_NAME:-supabase}-analytics
+    image: supabase/logflare:1.30.3
     restart: unless-stopped
     ports:
       - ${ANALYTICS_PORT}:4000

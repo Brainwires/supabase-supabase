@@ -1499,6 +1499,7 @@ export const api: NavMenuConstant = {
         { name: 'Creating API routes', url: '/guides/api/creating-routes' },
         { name: 'How API Keys work', url: '/guides/api/api-keys' },
         { name: 'Securing your API', url: '/guides/api/securing-your-api' },
+        { name: 'Error Codes', url: '/guides/api/rest/postgrest-error-codes' },
       ],
     },
     {
@@ -1849,6 +1850,10 @@ export const realtime: NavMenuConstant = {
       name: 'Guides',
       url: undefined,
       items: [
+        {
+          name: 'Realtime Reports',
+          url: '/guides/realtime/reports' as `/${string}`,
+        },
         {
           name: 'Subscribing to Database Changes',
           url: '/guides/realtime/subscribing-to-database-changes' as `/${string}`,
