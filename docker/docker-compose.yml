@@ -402,7 +402,7 @@ services:
     container_name: supabase-db
     # Spock-enabled PostgreSQL image with bi-directional replication support
     # Works as standard PostgreSQL when replication is not configured
-    image: ghcr.io/brainwires/supabase-postgres-spock:15
+    image: ghcr.io/brainwires/supabase-postgres-spock@sha256:4d8efced503ea177c478927540521aa9910e91b9e01f6493661af79c00d1e2f1
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
@@ -415,8 +415,8 @@ services:
       - ./volumes/db/97-snowflake.sql:/docker-entrypoint-initdb.d/migrations/96-snowflake.sql:Z
       # Spock extension for bi-directional replication
       - ./volumes/db/99-spock.sql:/docker-entrypoint-initdb.d/migrations/97-spock.sql:Z
-      # Spock replication user
-      - ./volumes/db/98-spock-replication.sql:/docker-entrypoint-initdb.d/migrations/98-spock-replication.sql:Z
+      # Spock replication user (reads REPLICATION_PASSWORD from environment)
+      - ./volumes/db/98-spock-replication.sh:/docker-entrypoint-initdb.d/migrations/98-spock-replication.sh:Z
       - ./volumes/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:Z
       # Must be superuser to create event trigger
       - ./volumes/db/webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:Z
@@ -462,16 +462,15 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXP: ${JWT_EXPIRY}
+      REPLICATION_PASSWORD: ${REPLICATION_PASSWORD:-spock_replication_password_change_me}
     command:
-      [
-        "postgres",
-        "-c",
-        "config_file=/etc/postgresql/postgresql.conf",
-        "-c",
-        "log_min_messages=fatal", # prevents Realtime polling queries from appearing in logs
-        "-c",
-        "snowflake.node=${SNOWFLAKE_NODE:-1}"
-      ]
+      - postgres
+      - -c
+      - config_file=/etc/postgresql/postgresql.conf
+      - -c
+      - log_min_messages=fatal # prevents Realtime polling queries from appearing in logs
+      - -c
+      - snowflake.node=${SNOWFLAKE_NODE:-1}
 
   vector:
     container_name: supabase-vector

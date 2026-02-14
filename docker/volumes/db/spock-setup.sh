@@ -120,8 +120,22 @@ else
     echo "Subscription already exists with ID: $SUB_ID"
 fi
 
+# Validate SUB_ID
+SUB_ID=$(echo "$SUB_ID" | tr -d '[:space:]')
+if [ -z "$SUB_ID" ] || ! echo "$SUB_ID" | grep -qE '^[0-9]+$'; then
+    echo "ERROR: Failed to create or find subscription '$SUB_NAME'"
+    echo "SUB_ID returned: '$SUB_ID'"
+    echo "Check spock extension status and remote DSN: $REMOTE_DSN"
+    exit 1
+fi
+
 # Get subscription slot name
 SLOT_NAME=$(psql -U supabase_admin -d postgres -tAc "SELECT sub_slot_name FROM spock.subscription WHERE sub_id = $SUB_ID;")
+SLOT_NAME=$(echo "$SLOT_NAME" | tr -d '[:space:]')
+if [ -z "$SLOT_NAME" ]; then
+    echo "ERROR: Could not find slot name for subscription ID $SUB_ID"
+    exit 1
+fi
 echo "Slot name: $SLOT_NAME"
 
 # Step 6: Spock replication workarounds (may not be needed for 5.x)

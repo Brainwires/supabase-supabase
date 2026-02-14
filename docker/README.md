@@ -238,7 +238,7 @@ PRIMARY (server-a)                          STANDBY (server-b)
 - **DDL replication**: DDL auto-replicates with Spock 5.0.4 — no manual wrapping needed
 - **Auto repset**: New tables are automatically added to the `default` replication set via event trigger
 - **No sequence conflicts**: Snowflake IDs embed the node ID, so IDs are globally unique without any sequence coordination
-- **Change the default password**: Update `REPLICATION_PASSWORD` in `.env` for production use
+- **Change the default password**: You **must** update `REPLICATION_PASSWORD` in `.env` before exposing the database to any network. The default password is insecure
 
 ### Disabling Replication
 
