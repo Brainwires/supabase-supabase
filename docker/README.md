@@ -144,12 +144,12 @@ SELECT spock.replicate_ddl('CREATE TABLE public.my_table (id bigint PRIMARY KEY)
 
 ### Setting Up Bi-Directional Replication
 
-For two Supabase instances (e.g., PRIMARY and STANDBY):
+For two Supabase instances on separate servers (e.g., PRIMARY and STANDBY):
 
 1. **Configure both instances** with different `.env` values:
-   - Unique `COMPOSE_PROJECT_NAME` per instance
    - Unique `SNOWFLAKE_NODE` per instance (e.g., `1` for primary, `2` for standby)
-   - Update `REPLICATION_PASSWORD` from the default
+   - Update `REPLICATION_PASSWORD` from the default (must match on both nodes)
+   - Ensure each node's PostgreSQL port is accessible from the other node
 
 2. **Start both instances**:
    ```bash
@@ -160,14 +160,22 @@ For two Supabase instances (e.g., PRIMARY and STANDBY):
    docker compose up -d
    ```
 
-3. **Run the setup script on each node** (after both are running):
+3. **Run the setup script** (requires two passes since each node must exist before the other can subscribe):
    ```bash
-   # On PRIMARY first - creates the primary node
-   docker exec <primary-db-container> /spock-setup.sh primary <standby-host> <standby-db-port>
+   # Pass 1: Run on PRIMARY - creates the primary node, then exits
+   # because the standby node doesn't exist yet (this is expected)
+   docker exec supabase-db /spock-setup.sh primary <standby-host> <standby-port>
 
-   # On STANDBY - subscribe to PRIMARY
-   docker exec <standby-db-container> /spock-setup.sh standby <primary-host> <primary-db-port>
+   # Pass 2: Run on STANDBY - creates the standby node, finds primary,
+   # creates subscription (succeeds)
+   docker exec supabase-db /spock-setup.sh standby <primary-host> <primary-port>
+
+   # Pass 3: Re-run on PRIMARY - now finds the standby node,
+   # creates subscription (succeeds)
+   docker exec supabase-db /spock-setup.sh primary <standby-host> <standby-port>
    ```
+
+   The `<host>` and `<port>` values should point to the other node's PostgreSQL instance. If both databases are on the same Docker network, use the container name as the host. For cross-network setups, use the appropriate hostname/IP and port.
 
 4. **Verify replication**:
    ```sql
@@ -178,6 +186,51 @@ For two Supabase instances (e.g., PRIMARY and STANDBY):
    -- Test: insert on one node, verify it appears on the other
    INSERT INTO my_table (name) VALUES ('test from primary');
    ```
+
+### Secure Cross-Network Replication with Cloudflare Tunnels
+
+If your nodes are on different networks (e.g., different data centers or cloud providers), you need a secure way for each node to reach the other's PostgreSQL port. [Cloudflare Tunnels](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) are a good option — they provide encrypted connectivity without exposing database ports to the public internet.
+
+**How it works:**
+
+Each server runs a Cloudflare tunnel that exposes its local PostgreSQL port to a private hostname. The other server runs a `cloudflared access` client that connects to that hostname and makes it available locally.
+
+```
+PRIMARY (server-a)                          STANDBY (server-b)
+┌─────────────────────┐                     ┌─────────────────────┐
+│ supabase-db (:5432) │                     │ supabase-db (:5432) │
+│         ↑           │                     │         ↑           │
+│ cloudflared tunnel  │──── Cloudflare ────│ cloudflared access  │
+│ (exposes :5432 as   │     Network         │ (pg-primary:35432)  │
+│  pg-primary.example)│                     │                     │
+│                     │                     │                     │
+│ cloudflared access  │──── Cloudflare ────│ cloudflared tunnel  │
+│ (pg-standby:35432)  │     Network         │ (exposes :5432 as   │
+│                     │                     │  pg-standby.example) │
+└─────────────────────┘                     └─────────────────────┘
+```
+
+**Setup on each server:**
+
+1. [Create a Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/get-started/) that points a private hostname to `tcp://localhost:<db-port>` (e.g., `pg-primary.example.com` → `tcp://localhost:5432`)
+
+2. On the **other** server, run a `cloudflared access` client to make the remote database available locally:
+   ```bash
+   # Example: on STANDBY, connect to PRIMARY's tunnel
+   docker run -d --name cloudflared-pg-replication \
+     --network supabase_default \
+     --restart unless-stopped \
+     cloudflare/cloudflared:latest \
+     access tcp --hostname pg-primary.example.com --url 0.0.0.0:35432
+   ```
+
+3. Use the `cloudflared access` container as the host in the spock setup:
+   ```bash
+   # On STANDBY — the cloudflared container is on the same Docker network
+   docker exec supabase-db /spock-setup.sh standby cloudflared-pg-replication 35432
+   ```
+
+   If the `cloudflared access` client runs as a system service instead of a Docker container, use `host.docker.internal` as the host so the database container can reach it.
 
 ### Important Notes
 
