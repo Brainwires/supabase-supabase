@@ -131,7 +131,7 @@ ALTER TABLE public.users ADD COLUMN email text;
 ```
 
 This requires the following settings in `postgresql-spock.conf` (pre-configured):
-```
+```ini
 spock.enable_ddl_replication = on
 spock.include_ddl_repset = on
 spock.allow_ddl_from_functions = on
@@ -195,7 +195,7 @@ If your nodes are on different networks (e.g., different data centers or cloud p
 
 Each server runs a Cloudflare tunnel that exposes its local PostgreSQL port to a private hostname. The other server runs a `cloudflared access` client that connects to that hostname and makes it available locally.
 
-```
+```text
 PRIMARY (server-a)                          STANDBY (server-b)
 ┌─────────────────────┐                     ┌─────────────────────┐
 │ supabase-db (:5432) │                     │ supabase-db (:5432) │

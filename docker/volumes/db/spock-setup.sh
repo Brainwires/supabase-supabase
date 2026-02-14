@@ -181,14 +181,23 @@ echo "Step 7: Restarting subscription..."
 psql -U supabase_admin -d postgres -c "SELECT spock.sub_disable('$SUB_NAME');" > /dev/null
 psql -U supabase_admin -d postgres -c "SELECT spock.sub_enable('$SUB_NAME');" > /dev/null
 
-# Wait for subscription to come up
+# Wait for subscription to come up (poll with timeout instead of fixed sleep)
 echo "Waiting for subscription to start..."
-sleep 3
+TIMEOUT=30
+ELAPSED=0
+STATUS=""
+while [ $ELAPSED -lt $TIMEOUT ]; do
+    STATUS=$(psql -U supabase_admin -d postgres -tAc "SELECT status FROM spock.sub_show_status() WHERE subscription_name = '$SUB_NAME';" 2>/dev/null | tr -d '[:space:]')
+    if [ "$STATUS" = "replicating" ]; then
+        break
+    fi
+    sleep 2
+    ELAPSED=$((ELAPSED + 2))
+done
 
 # Step 8: Verify status
 echo ""
 echo "Step 8: Verifying subscription status..."
-STATUS=$(psql -U supabase_admin -d postgres -tAc "SELECT status FROM spock.sub_show_status() WHERE subscription_name = '$SUB_NAME';")
 echo "Subscription status: $STATUS"
 
 if [ "$STATUS" = "replicating" ]; then

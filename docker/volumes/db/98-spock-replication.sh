@@ -27,5 +27,7 @@ GRANT USAGE ON SCHEMA public TO spock_replicator;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO spock_replicator;
 
 -- Grant permissions for future tables in public schema
+-- Note: ALTER DEFAULT PRIVILEGES only affects tables created by the current role (supabase_admin).
+-- Tables created by other roles will need explicit GRANT SELECT to spock_replicator.
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO spock_replicator;
 EOSQL

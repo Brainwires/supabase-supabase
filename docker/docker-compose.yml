@@ -411,11 +411,10 @@ services:
       - ./volumes/db/postgresql-spock.conf:/etc/postgresql/postgresql.conf:Z
       # Custom pg_hba.conf with replication access pre-configured
       - ./volumes/db/pg_hba.conf:/etc/postgresql/pg_hba.conf:Z
-      # Snowflake extension for distributed unique IDs
-      - ./volumes/db/97-snowflake.sql:/docker-entrypoint-initdb.d/migrations/96-snowflake.sql:Z
-      # Spock extension for bi-directional replication
-      - ./volumes/db/99-spock.sql:/docker-entrypoint-initdb.d/migrations/97-spock.sql:Z
-      # Spock replication user (reads REPLICATION_PASSWORD from environment)
+      # Spock/Snowflake init scripts run before upstream migrations (96-98 < 99)
+      # Order: snowflake extension → spock extension → replication user
+      - ./volumes/db/96-snowflake.sql:/docker-entrypoint-initdb.d/migrations/96-snowflake.sql:Z
+      - ./volumes/db/97-spock.sql:/docker-entrypoint-initdb.d/migrations/97-spock.sql:Z
       - ./volumes/db/98-spock-replication.sh:/docker-entrypoint-initdb.d/migrations/98-spock-replication.sh:Z
       - ./volumes/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:Z
       # Must be superuser to create event trigger
