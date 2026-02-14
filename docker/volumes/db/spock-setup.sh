@@ -124,9 +124,9 @@ fi
 SLOT_NAME=$(psql -U supabase_admin -d postgres -tAc "SELECT sub_slot_name FROM spock.subscription WHERE sub_id = $SUB_ID;")
 echo "Slot name: $SLOT_NAME"
 
-# Step 6: Apply manual fixes (required for Spock 3.1.8)
+# Step 6: Spock replication workarounds (may not be needed for 5.x)
 echo ""
-echo "Step 6: Applying Spock 3.1.8 manual fixes..."
+echo "Step 6: Applying Spock replication workarounds (may not be needed for 5.x)..."
 
 # Create replication origin locally
 echo "Creating replication origin locally..."
@@ -155,7 +155,7 @@ EOSQL
 echo "Creating replication slot on remote provider..."
 SLOT_EXISTS=$(psql "$REMOTE_DSN" -tAc "SELECT COUNT(*) FROM pg_replication_slots WHERE slot_name = '$SLOT_NAME';")
 if [ "$SLOT_EXISTS" = "0" ]; then
-    psql "$REMOTE_DSN" -c "SELECT pg_create_logical_replication_slot('$SLOT_NAME', 'spock');"
+    psql "$REMOTE_DSN" -c "SELECT pg_create_logical_replication_slot('$SLOT_NAME', 'spock_output');"
     echo "Created replication slot on remote"
 else
     echo "Replication slot already exists on remote"

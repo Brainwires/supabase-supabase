@@ -26,6 +26,8 @@ This Docker Compose configuration includes the following services:
 - **[imgproxy](https://github.com/imgproxy/imgproxy)** - Fast and secure image processing server
 - **[postgres-meta](https://github.com/supabase/postgres-meta)** - RESTful API for managing Postgres (fetch tables, add roles, run queries)
 - **[PostgreSQL](https://github.com/supabase/postgres)** - Object-relational database with over 30 years of active development
+- **[Spock](https://github.com/pgEdge/spock)** - Multi-master bi-directional logical replication for PostgreSQL
+- **[Snowflake](https://github.com/pgEdge/snowflake)** - Distributed unique ID generator (Twitter Snowflake-style) for conflict-free multi-node primary keys
 - **[Edge Runtime](https://github.com/supabase/edge-runtime)** - Web server based on Deno runtime for running JavaScript, TypeScript, and WASM services
 - **[Logflare](https://github.com/Logflare/logflare)** - Log management and event analytics platform
 - **[Vector](https://github.com/vectordotdev/vector)** - High-performance observability data pipeline for logs
@@ -84,63 +86,70 @@ See the [security section](https://supabase.com/docs/guides/self-hosting/docker#
 
 ## Bi-Directional Replication with Spock
 
-This Docker setup uses a custom PostgreSQL image that includes the [Spock](https://github.com/pgEdge/spock) extension for bi-directional logical replication. This enables active-active replication between two or more Supabase instances.
-
-### Prerequisites
-
-⚠️ **Supabase CLI Required for Migrations**
-
-When using Spock replication, the [Supabase CLI](https://supabase.com/docs/guides/cli) is **strongly recommended** for running database migrations.
-
-**Why?** Spock does not automatically replicate DDL (schema changes) like `CREATE TABLE`, `ALTER TABLE`, etc. All DDL statements must be wrapped in `spock.replicate_ddl()` to replicate to other nodes. The Supabase CLI handles this automatically when Spock is enabled in your `config.toml`.
-
-**Without the CLI**, you must manually wrap every DDL statement:
-```sql
--- Instead of this (won't replicate):
-CREATE TABLE public.users (id SERIAL PRIMARY KEY, name TEXT);
-
--- You must write this:
-SELECT spock.replicate_ddl($$
-    CREATE TABLE public.users (id SERIAL PRIMARY KEY, name TEXT)
-$$);
-```
-
-**With the CLI**, your migrations stay clean and the wrapping is automatic:
-```sql
--- supabase/migrations/20240101000000_create_users.sql
--- Just write normal SQL - CLI wraps it automatically
-CREATE TABLE public.users (id SERIAL PRIMARY KEY, name TEXT);
-```
-
-To enable Spock in the CLI, add to your `config.toml`:
-```toml
-[db.spock]
-enabled = true
-replication_sets = ["default", "ddl_sql"]
-auto_add_tables = true
-node_offset = 1  # Use 2 on standby node
-```
-
-Then run migrations with:
-```bash
-supabase migration up \
-  --db-url "postgresql://postgres:password@primary:5432/postgres" \
-  --spock-remote-dsn "postgresql://postgres:password@standby:5432/postgres"
-```
+This Docker setup uses a custom PostgreSQL image that includes [Spock 5.0.4](https://github.com/pgEdge/spock) for bi-directional logical replication and [Snowflake](https://github.com/pgEdge/snowflake) for distributed unique ID generation. This enables active-active replication between two or more Supabase instances.
 
 ### How It Works
 
-- The Spock extension is automatically installed when the database initializes
+- **Spock** replicates DML (INSERT, UPDATE, DELETE) and DDL (CREATE TABLE, ALTER TABLE, etc.) automatically between nodes
+- **Snowflake** generates globally unique 64-bit IDs using a node-specific identifier, eliminating primary key conflicts across nodes
 - A replication user (`spock_replicator`) is created automatically
 - pg_hba.conf is pre-configured to allow replication connections
 - An event trigger automatically adds new tables to the `default` replication set
-- Data changes (INSERT, UPDATE, DELETE) replicate automatically once tables are in a replication set
+
+### Snowflake IDs
+
+Each node must have a unique `SNOWFLAKE_NODE` value (1-1023) set in `.env`. This is used to generate globally unique bigint IDs across all nodes, replacing the need for sequence offsets or UUIDs.
+
+```sql
+-- Use snowflake IDs as primary keys
+CREATE TABLE public.my_table (
+    id bigint DEFAULT snowflake.nextval('snowflake.id_seq') PRIMARY KEY,
+    name text
+);
+
+-- Generate an ID manually
+SELECT snowflake.nextval('snowflake.id_seq');
+-- Returns: 413334082185859072
+
+-- Extract the originating node from any ID
+SELECT snowflake.get_node(413334082185859072);
+-- Returns: 1
+```
+
+### DDL Replication
+
+Spock 5.0.4 automatically replicates DDL statements between nodes. Standard SQL like `CREATE TABLE`, `ALTER TABLE`, and `DROP TABLE` will replicate without any special wrapping:
+
+```sql
+-- Just run normal DDL on any node - it replicates automatically
+CREATE TABLE public.users (
+    id bigint DEFAULT snowflake.nextval('snowflake.id_seq') PRIMARY KEY,
+    name text
+);
+
+ALTER TABLE public.users ADD COLUMN email text;
+```
+
+This requires the following settings in `postgresql-spock.conf` (pre-configured):
+```
+spock.enable_ddl_replication = on
+spock.include_ddl_repset = on
+spock.allow_ddl_from_functions = on
+```
+
+For edge cases where automatic capture doesn't work, you can use explicit replication:
+```sql
+SELECT spock.replicate_ddl('CREATE TABLE public.my_table (id bigint PRIMARY KEY)');
+```
 
 ### Setting Up Bi-Directional Replication
 
 For two Supabase instances (e.g., PRIMARY and STANDBY):
 
-1. **Configure both instances** with different ports and unique `COMPOSE_PROJECT_NAME` values in their `.env` files
+1. **Configure both instances** with different `.env` values:
+   - Unique `COMPOSE_PROJECT_NAME` per instance
+   - Unique `SNOWFLAKE_NODE` per instance (e.g., `1` for primary, `2` for standby)
+   - Update `REPLICATION_PASSWORD` from the default
 
 2. **Start both instances**:
    ```bash
@@ -160,44 +169,27 @@ For two Supabase instances (e.g., PRIMARY and STANDBY):
    docker exec <standby-db-container> /spock-setup.sh standby <primary-host> <primary-db-port>
    ```
 
-4. **Run migrations using Supabase CLI** (recommended) or manually wrap DDL:
-
-   **Using CLI (recommended):**
-   ```bash
-   supabase migration up \
-     --db-url "postgresql://postgres:password@primary:5432/postgres" \
-     --spock-remote-dsn "postgresql://postgres:password@standby:5432/postgres"
-   ```
-
-   **Manual alternative:**
+4. **Verify replication**:
    ```sql
-   -- Run on either node - DDL replicates to all subscribers
-   SELECT spock.replicate_ddl($$
-       CREATE TABLE public.my_table (
-           id SERIAL PRIMARY KEY,
-           data TEXT
-       )
-   $$);
-   ```
+   -- Check subscription status on each node
+   SELECT * FROM spock.sub_show_status();
+   -- status should be "replicating"
 
-5. **Configure sequences** to avoid primary key conflicts:
-   ```sql
-   -- On STANDBY only, set different sequence range
-   ALTER SEQUENCE my_table_id_seq RESTART WITH 1000000;
+   -- Test: insert on one node, verify it appears on the other
+   INSERT INTO my_table (name) VALUES ('test from primary');
    ```
-
-   Note: The CLI handles this automatically when `node_offset` is configured.
 
 ### Important Notes
 
-- **DDL replication**: DDL must be wrapped in `spock.replicate_ddl()` - use Supabase CLI for automatic wrapping
-- **Auto repset**: Tables are automatically added to the `default` replication set via event trigger
-- **Sequence conflicts**: Use different sequence ranges on each node (CLI handles this with `node_offset`)
+- **Unique node IDs**: Every node **must** have a unique `SNOWFLAKE_NODE` value (1-1023) in `.env`
+- **DDL replication**: DDL auto-replicates with Spock 5.0.4 — no manual wrapping needed
+- **Auto repset**: New tables are automatically added to the `default` replication set via event trigger
+- **No sequence conflicts**: Snowflake IDs embed the node ID, so IDs are globally unique without any sequence coordination
 - **Change the default password**: Update `REPLICATION_PASSWORD` in `.env` for production use
 
 ### Disabling Replication
 
-If you don't need replication, you can use this setup as a standard Supabase installation. The Spock extension is installed but inactive until you run the setup script.
+If you don't need replication, you can use this setup as a standard Supabase installation. The Spock extension is installed but inactive until you run the setup script. Snowflake IDs still work as a convenient distributed-safe ID generator even without replication.
 
 ## License
 
