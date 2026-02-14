@@ -131,7 +131,7 @@ ALTER TABLE public.users ADD COLUMN email text;
 ```
 
 This requires the following settings in `postgresql-spock.conf` (pre-configured):
-```ini
+```conf
 spock.enable_ddl_replication = on
 spock.include_ddl_repset = on
 spock.allow_ddl_from_functions = on

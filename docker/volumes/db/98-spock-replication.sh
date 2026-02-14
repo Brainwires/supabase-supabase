@@ -10,15 +10,16 @@ set -e
 
 REPLICATION_PASSWORD="${REPLICATION_PASSWORD:?REPLICATION_PASSWORD environment variable is required}"
 
-psql -v ON_ERROR_STOP=1 -U supabase_admin -d postgres <<EOSQL
-DO \$\$
+# Pass password via psql variable to avoid shell interpolation / SQL injection
+psql -v ON_ERROR_STOP=1 -v REPL_PW="$REPLICATION_PASSWORD" -U supabase_admin -d postgres <<'EOSQL'
+DO $$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'spock_replicator') THEN
-    CREATE USER spock_replicator WITH REPLICATION LOGIN PASSWORD '${REPLICATION_PASSWORD}';
+    EXECUTE format('CREATE USER spock_replicator WITH REPLICATION LOGIN PASSWORD %L', :'REPL_PW');
     RAISE NOTICE 'Created replication user: spock_replicator';
   END IF;
 END
-\$\$;
+$$;
 
 -- Grant permissions to spock_replicator for Spock extension access
 GRANT USAGE ON SCHEMA spock TO spock_replicator;
